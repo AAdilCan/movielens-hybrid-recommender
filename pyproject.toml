@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "movielens-hybrid-recommender"
+version = "0.1.0"
+description = "Hybrid movie recommender on MovieLens with collaborative, content-based and ensemble models"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Asım Adil Can", email = "adilcan007@gmail.com" }]
+license = { text = "MIT" }
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "click>=8.1",
+    "requests>=2.32",
+    "tqdm>=4.67",
+    "Jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-cov>=6.0"]
+
+[project.scripts]
+recsys = "recsys.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["recsys"]
+branch = true
