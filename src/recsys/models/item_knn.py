@@ -44,6 +44,7 @@ class ItemKNNRecommender(BaseRecommender):
         self.mean_center = mean_center
         self._im: InteractionMatrix | None = None
         self._sim: sparse.csr_matrix | None = None
+        self._sim_abs_sum: np.ndarray = np.empty(0)
         self._item_means: np.ndarray = np.empty(0)
 
     def fit(self, ratings: pd.DataFrame) -> "ItemKNNRecommender":
@@ -62,6 +63,8 @@ class ItemKNNRecommender(BaseRecommender):
         sim.setdiag(0.0)  # an item is not its own neighbour
         sim = _keep_top_k_per_row(sim.tocsr(), self.k_neighbors)
         self._sim = sim.tocsr()
+        # Per-item sum of |similarity| to its neighbours; the score denominator.
+        self._sim_abs_sum = np.asarray(abs(self._sim).sum(axis=1)).ravel()
         self._fitted = True
         logger.info(
             "Fit item-kNN: %d items, top-%d neighbours, %d similarity edges",
@@ -92,21 +95,24 @@ class ItemKNNRecommender(BaseRecommender):
         prefs = np.zeros(im.n_items)
         prefs[rated_cols] = rated_vals
 
+        # Score every item at once: (S @ prefs)_i is the similarity-weighted sum
+        # of the user's ratings over item i's neighbours; divide by the neighbour
+        # |similarity| mass to get a weighted average. One sparse mat-vec beats a
+        # Python loop over candidates.
+        numer = self._sim.dot(prefs)
+        full = np.divide(
+            numer,
+            self._sim_abs_sum,
+            out=np.full(im.n_items, -np.inf),
+            where=self._sim_abs_sum > 0,
+        )
+
+        cols = np.array(
+            [im.item_index.get(int(m), -1) for m in item_ids], dtype=np.int64
+        )
         scores = np.full(len(item_ids), -np.inf)
-        for pos, movie_id in enumerate(item_ids):
-            col = im.item_index.get(int(movie_id))
-            if col is None:
-                continue
-            neighbours = self._sim.getrow(col)
-            if neighbours.nnz == 0:
-                continue
-            n_idx = neighbours.indices
-            n_sim = neighbours.data
-            # Weighted average of the user's ratings on the neighbour items.
-            overlap = prefs[n_idx]
-            denom = np.abs(n_sim).sum()
-            if denom > 0:
-                scores[pos] = float((n_sim * overlap).sum() / denom)
+        known = cols >= 0
+        scores[known] = full[cols[known]]
         return scores
 
 
